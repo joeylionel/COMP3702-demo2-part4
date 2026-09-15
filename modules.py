@@ -1,7 +1,7 @@
 """
 modules.py
 Convolutional Neural Network
-Task 1: Convolutional Variational Autoencoder (ConvVAE).
+Task 1: Convolutional Variational Autoencoder (VAE).
 """
 
 import torch
