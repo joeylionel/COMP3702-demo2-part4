@@ -116,3 +116,126 @@ if __name__ == "__main__":
     print(f"Reconstruction shape: {recon.shape}")
     print(f"Latent vector shape:  {mu.shape}")
     print(f"Calculated Loss:      {loss.item():.2f} (BCE: {bce.item():.2f}, KL: {kl.item():.2f})")
+
+
+
+# ----------------------------------------------
+# Task 2: UNet Architecture and Dice Loss
+# ----------------------------------------------
+
+class DoubleConv(nn.Module):
+    """(Conv2d -> BatchNorm -> ReLU) * 2 """
+    def __init__(self, in_ch, out_ch):
+        super(DoubleConv, self).__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        return self.conv(x)
+
+
+class UNet(nn.Module):
+    """
+    Classic UNet Architecture for OASIS MRI Brain Segmentation.
+    Input:  [Batch, 1, H, W]
+    Output: [Batch, num_classes, H, W] (Categorical / One-Hot logits)
+    """
+    def __init__(self, in_channels=1, num_classes=4):
+        super(UNet, self).__init__()
+        
+        # Contracting Path for feature extraction
+        self.inc = DoubleConv(in_channels, 32)
+        self.down1 = nn.Sequential(nn.MaxPool2d(2), DoubleConv(32, 64))
+        self.down2 = nn.Sequential(nn.MaxPool2d(2), DoubleConv(64, 128))
+        self.down3 = nn.Sequential(nn.MaxPool2d(2), DoubleConv(128, 256))
+        
+        # Bottleneck 
+        self.bot = nn.Sequential(nn.MaxPool2d(2), DoubleConv(256, 512))
+
+        # Expansive Path 
+        self.up1 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
+        self.conv_up1 = DoubleConv(512, 256)
+
+        self.up2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
+        self.conv_up2 = DoubleConv(256, 128)
+
+        self.up3 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
+        self.conv_up3 = DoubleConv(128, 64)
+
+        self.up4 = nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2)
+        self.conv_up4 = DoubleConv(64, 32)
+
+        # Output Layer (1x1 Convolution to map to num_classes)
+        self.outc = nn.Conv2d(32, num_classes, kernel_size=1)
+
+    def forward(self, x):
+        # encoding downsampling path
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x5 = self.bot(x4)
+
+        # decoding upsampling path with skip connections
+        u1 = self.up1(x5)
+        d1 = self.conv_up1(torch.cat([u1, x4], dim=1))
+
+        u2 = self.up2(d1)
+        d2 = self.conv_up2(torch.cat([u2, x3], dim=1))
+
+        u3 = self.up3(d2)
+        d3 = self.conv_up3(torch.cat([u3, x2], dim=1))
+
+        u4 = self.up4(d3)
+        d4 = self.conv_up4(torch.cat([u4, x1], dim=1))
+
+        logits = self.outc(d4)
+        return logits
+
+
+class DiceCELoss(nn.Module):
+    """
+    Binary Cross Entropy + Soft Dice Loss ( One-Hot Categorical Segmentation )
+    """
+    def __init__(self, smooth=1e-5):
+        super(DiceCELoss, self).__init__()
+        self.smooth = smooth
+        self.ce = nn.CrossEntropyLoss()
+
+    def forward(self, logits, target_onehot, target_indices):
+        ce_loss = self.ce(logits, target_indices)
+
+        probs = torch.softmax(logits, dim=1)
+        intersection = torch.sum(probs * target_onehot, dim=(2, 3))
+        cardinality = torch.sum(probs + target_onehot, dim=(2, 3))
+        dice_score = (2.0 * intersection + self.smooth) / (cardinality + self.smooth)
+        dice_loss = 1.0 - torch.mean(dice_score)
+
+        return ce_loss + dice_loss
+
+
+def calculate_dsc(pred_logits, target_indices, num_classes=4):
+    """
+    calculate Dice Similarity Coefficient (DSC) for independent classes.
+    """
+    pred_indices = torch.argmax(pred_logits, dim=1)
+    dsc_list = []
+    
+    for c in range(num_classes):
+        pred_c = (pred_indices == c).float()
+        target_c = (target_indices == c).float()
+        
+        intersection = torch.sum(pred_c * target_c)
+        denom = torch.sum(pred_c) + torch.sum(target_c)
+        if denom == 0:
+            dsc = 1.0
+        else:
+            dsc = (2.0 * intersection / denom).item()
+        dsc_list.append(dsc)
+    return dsc_list
