@@ -126,46 +126,46 @@ class OASISSegDataset(Dataset):
         return img_tensor, mask_onehot, mask_tensor
 
 
-    def get_seg_dataloaders(base_dir, batch_size=16, img_size=(128, 128)):
-        """Create DataLoader instances for training, validation, and test splits."""
-        base = Path(base_dir)
+def get_seg_dataloaders(base_dir="./data/keras_png_slices_data", batch_size=16, img_size=(128, 128)):
+    """Create DataLoader instances for training, validation, and test splits."""
+    base = Path(base_dir)
 
-        train_ds = OASISSegDataset(
-            img_dir=base / "keras_png_slices_train",
-            mask_dir=base / "keras_png_slices_seg_train",
-            img_size=img_size,
-        )
-        val_ds = OASISSegDataset(
-            img_dir=base / "keras_png_slices_validate",
-            mask_dir=base / "keras_png_slices_seg_validate",
-            img_size=img_size,
-        )
-        test_ds = OASISSegDataset(
-            img_dir=base / "keras_png_slices_test",
-            mask_dir=base / "keras_png_slices_seg_test",
-            img_size=img_size,
-        )
+    train_ds = OASISSegDataset(
+        img_dir=base / "keras_png_slices_train",
+        mask_dir=base / "keras_png_slices_seg_train",
+        img_size=img_size,
+    )
+    val_ds = OASISSegDataset(
+        img_dir=base / "keras_png_slices_validate",
+        mask_dir=base / "keras_png_slices_seg_validate",
+        img_size=img_size,
+    )
+    test_ds = OASISSegDataset(
+        img_dir=base / "keras_png_slices_test",
+        mask_dir=base / "keras_png_slices_seg_test",
+        img_size=img_size,
+    )
 
-        train_loader = DataLoader(
-            train_ds,
-            batch_size=batch_size,
-            shuffle=True,
-            num_workers=0,
-            pin_memory=True,
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=0,
+        pin_memory=True,
+    )
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=True,
         )
-        val_loader = DataLoader(
-            val_ds,
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=0,
-            pin_memory=True,
-        )
-        test_loader = DataLoader(
-            test_ds,
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=0,
-            pin_memory=True,
-        )
+    test_loader = DataLoader(
+        test_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=True,
+    )
 
-        return train_loader, val_loader, test_loader
+    return train_loader, val_loader, test_loader
